@@ -73,47 +73,40 @@ namespace ScriptEngine
 
             Logger.Log(LogLevel.Info, $"Loading plugins from {path}");
 
+            var ass = Assembly.LoadFrom(path);
             using (var dll = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { AssemblyResolver = defaultResolver }))
             {
-                dll.Name.Name = $"{dll.Name.Name}-{DateTime.Now.Ticks}";
-
-                using (var ms = new MemoryStream())
+                foreach (Type type in GetTypesSafe(ass))
                 {
-                    dll.Write(ms);
-                    var ass = Assembly.Load(ms.ToArray());
-
-                    foreach (Type type in GetTypesSafe(ass))
+                    try
                     {
-                        try
+                        if (typeof(BaseUnityPlugin).IsAssignableFrom(type))
                         {
-                            if (typeof(BaseUnityPlugin).IsAssignableFrom(type))
+                            var metadata = MetadataHelper.GetMetadata(type);
+                            if (metadata != null)
                             {
-                                var metadata = MetadataHelper.GetMetadata(type);
-                                if (metadata != null)
-                                {
-                                    var typeDefinition = dll.MainModule.Types.First(x => x.FullName == type.FullName);
-                                    var typeInfo = Chainloader.ToPluginInfo(typeDefinition);
-                                    Chainloader.PluginInfos[metadata.GUID] = typeInfo;
+                                var typeDefinition = dll.MainModule.Types.First(x => x.FullName == type.FullName);
+                                var typeInfo = Chainloader.ToPluginInfo(typeDefinition);
+                                Chainloader.PluginInfos[metadata.GUID] = typeInfo;
 
-                                    Logger.Log(LogLevel.Info, $"Loading {metadata.GUID}");
-                                    StartCoroutine(DelayAction(() =>
+                                Logger.Log(LogLevel.Info, $"Loading {metadata.GUID}");
+                                StartCoroutine(DelayAction(() =>
+                                {
+                                    try
                                     {
-                                        try
-                                        {
-                                            obj.AddComponent(type);
-                                        }
-                                        catch (Exception e)
-                                        {
-                                            Logger.LogError($"Failed to load plugin {metadata.GUID} because of exception: {e}");
-                                        }
-                                    }));
-                                }
+                                        obj.AddComponent(type);
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Logger.LogError($"Failed to load plugin {metadata.GUID} because of exception: {e}");
+                                    }
+                                }));
                             }
                         }
-                        catch (Exception e)
-                        {
-                            Logger.LogError($"Failed to load plugin {type.Name} because of exception: {e}");
-                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.LogError($"Failed to load plugin {type.Name} because of exception: {e}");
                     }
                 }
             }
